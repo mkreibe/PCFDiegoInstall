@@ -5,6 +5,7 @@ Param (
     [switch] $dirty,
     [switch] $help,
     [switch] $usedefaults,
+    [string] $folder,
     [string] $user,
     [string] $password,
     [string] $ip,
@@ -14,8 +15,6 @@ Param (
 Clear-Host
 
 $pivotal_url = 'https://network.pivotal.io/products/elastic-runtime'
-$unzip_location = 'C:\diego-installs'
-$zip_structure = 'DiegoWindows'
 
 $input_color = 'Green'
 $info_color = 'DarkGray'
@@ -39,6 +38,7 @@ if($help) {
     Write-Host "     [-dirty]"
     Write-Host "     [-help]"
     Write-Host "     [-usedefaults]"
+    Write-Host "     [-folder <Location of the unzipped Diego files>]"
     Write-Host "     [-user <BOSH Director Administrator Name>]"
     Write-Host "     [-password <BOSH Director Administrator Password>]"
     Write-Host "     [-ip <BOSH Director IP Address>]"
@@ -88,6 +88,10 @@ if($ip -ne "") {
     Write-Host "   IP Address: $ip" -ForegroundColor $info_color
 }
 
+if($folder -ne "") {
+    Write-Host "   Diego Contents: $folder" -ForegroundColor $info_color
+}
+
 # Write the diego version.
 Write-Host "Assumed Diego [Version: $diego]" -ForegroundColor $info_color
 
@@ -129,42 +133,46 @@ if($assume_bosh) {
     Write-Host "Assumed BOSH Director IP Address: $ip" -ForegroundColor $info_color
 }
 
-# Get the zip and put it somewhere.
-# TODO: in the future we may want to add a
-#         Invoke-WebRequest $pivotal_url -OutFile $zip_staging
-#       type of construct that would auto download the file.
-$zip_file = "C:\Users\$([Environment]::UserName)\Downloads\DiegoWindows$($diego).zip"
-if(-not $usedefaults) {
-    Write-Host "`nDownload the zip from: $pivotal_url" -ForegroundColor $action_color
-    Write-Host "Enter the location of the zip file [$($zip_file)]: " -NoNewline -ForegroundColor $input_color
-    $prompt = Read-Host
-    if (!$prompt -eq "") { $zip_file = $prompt }
-}
-
-if(Test-Path $unzip_location) {
-    Write-Host "Removing remnants for unzip location ($unzip_location)." -ForegroundColor $info_color
-    Remove-Item -path $unzip_location -Force -Recurse -Confirm:$false
-}
-
-Write-Host "Unzipping $($unzip_location) ..." -ForegroundColor $info_color
-if($psver.Major -ge 5) {
-    Expand-Archive $zip_file -Dest $unzip_location
-} else {
-    New-Item $unzip_location -type directory -Force | Out-Null
-    $shell = New-Object -com Shell.Application
-    $zip = $shell.Namespace($zip_file)
-    foreach($item in $zip.items()) {
-        $shell.Namespace($unzip_location).copyhere($item)
+$was_unzipped = $false
+if($folder -eq "") {
+    # Get the zip and put it somewhere.
+    # TODO: in the future we may want to add a
+    #         Invoke-WebRequest $pivotal_url -OutFile $zip_staging
+    #       type of construct that would auto download the file.
+    $zip_file = "C:\Users\$([Environment]::UserName)\Downloads\DiegoWindows$($diego).zip"
+    if(-not $usedefaults) {
+        Write-Host "`nDownload the zip from: $pivotal_url" -ForegroundColor $action_color
+        Write-Host "Enter the location of the zip file [$($zip_file)]: " -NoNewline -ForegroundColor $input_color
+        $prompt = Read-Host
+        if (!$prompt -eq "") { $zip_file = $prompt }
     }
+
+    if(Test-Path $folder) {
+        Write-Host "Removing remnants for unzip location ($folder)." -ForegroundColor $info_color
+        Remove-Item -path $unzip_location -Force -Recurse -Confirm:$false
+    }
+
+    Write-Host "Unzipping $($folder) ..." -ForegroundColor $info_color
+    if($psver.Major -ge 5) {
+        Expand-Archive $zip_file -Dest $folder
+    } else {
+        New-Item $folder -type directory -Force | Out-Null
+        $shell = New-Object -com Shell.Application
+        $zip = $shell.Namespace($zip_file)
+        foreach($item in $zip.items()) {
+            $shell.Namespace($folder).copyhere($item)
+        }
+    }
+    $was_unzipped = $true
 }
 
 # Move to the unzip location.
 $orig_folder = Get-Location
-Write-Host "Changing Folders: [Old: $($orig_folder)] [New: $($unzip_location)] ..." -ForegroundColor $info_color
-Set-Location -Path $unzip_location
+Write-Host "Changing Folders: [Old: $($orig_folder)] [New: $($folder)] ..." -ForegroundColor $info_color
+Set-Location -Path $folder
 
 # Extract the file.
-$setup_file_location = "$unzip_location\$zip_structure\setup.ps1"
+$setup_file_location = ".\setup.ps1"
 Write-Host "Executing $($setup_file_location) ..." -ForegroundColor $info_color
 if(-not $debug) {
     Unblock-File -Path "$setup_file_location" -Confirm:$false
@@ -203,29 +211,32 @@ if(-not $usedefaults) {
     if (!$prompt -eq "") { $port = $prompt }
 }
 
-$generate_file_location = "$unzip_location\$zip_structure\generate.exe"
+$generate_file_location = ".\generate.exe"
 
-Write-Host "Executing $generate_file_location --boshUrl https://$($user):********@$($ip):$($port) -outputDir $unzip_location ..." -ForegroundColor $info_color
+Write-Host "Executing $generate_file_location --boshUrl https://$($user):********@$($ip):$($port) -outputDir . ..." -ForegroundColor $info_color
 if(-not $debug) {
-    Invoke-Expression "$generate_file_location --boshUrl https://$($user):$($password)@$($ip):$($port) -outputDir $unzip_location"
+    Invoke-Expression "$generate_file_location --boshUrl https://$($user):$($password)@$($ip):$($port) -outputDir ."
 } else {
     Write-Host "   Debugging, Skipping." -ForegroundColor $debug_color
 }
 
 # Invoke the install
-$install_file_location = "$unzip_location\install.bat"
+$install_file_location = ".\install.bat"
 Write-Host "Looking for $install_file_location ..." -ForegroundColor $info_color
 if(Test-Path $install_file_location) {
+    Write-Host "Injecting log to installer" -ForegroundColor $info_color
+    Add-Content $install_file_location "`necho Complete!"
+
     Write-Host "Invoking $install_file_location ..." -ForegroundColor $info_color
     if(-not $debug) {
-        $batch = Start-Process -FilePath $install_file_location -Wait -RedirectStandardError install_log.txt -WorkingDirectory "$unzip_location" #\$zip_structure"
+        $batch = Start-Process -FilePath $install_file_location -Wait -RedirectStandardOutput install_log.txt -RedirectStandardError install_err.txt -WorkingDirectory .
 
         # write the error code, error message and batch file on errors.
         if($batch.ExitCode -ne $null) {
             Write-Host "   Exit Code: $($batch.ExitCode)" -ForegroundColor $error_color
             $batch = NET HELPMSG $($batch.ExitCode)
             Write-Host "   Network Error: $($batch)" -ForegroundColor $error_color
-            $file_contents = TYPE install_log.txt
+            $file_contents = TYPE install_err.txt
             Write-Host "   Logs:`n$file_contents" -ForegroundColor $info_color
         } else {
             Write-Host "   Batch script completed successfully" -ForegroundColor $info_color
@@ -243,7 +254,7 @@ Set-Location -Path $orig_folder
 
 if(-not $dirty) {
     Write-Host "Cleaning up." -ForegroundColor $info_color
-    if(Test-Path $unzip_location) {
-        Remove-Item -path $unzip_location -Force -Recurse -Confirm:$false
+    if($was_unzipped -and $(Test-Path $folder)) {
+        Remove-Item -path $folder -Force -Recurse -Confirm:$false
     }
 }
