@@ -20,7 +20,7 @@ Param (
             strange behaviour if Powershell.
 #>
 
-Set-Variable version -option Constant -value '1.0.0'
+Set-Variable version -option Constant -value '1.0.1'
 Set-Variable pivotal_url -option Constant -value 'https://network.pivotal.io/products/elastic-runtime'
 
 Set-Variable input_color -option Constant -value 'Green'
@@ -303,10 +303,10 @@ function Call-Executable($folder, $filename, $arguments = "") {
     $output
 }
 
-function Call-Batch($folder, $filename) {
+function Call-Batch($folder, $filename, $working_folder) {
     . {
         $full_name = Find-File $folder $filename
-        $batch = Start-Process -FilePath $full_name -Wait -RedirectStandardOutput $(Join-Path $folder 'install_log.txt') -RedirectStandardError $(Join-Path $folder 'install_err.txt') -WorkingDirectory $folder
+        $batch = Start-Process -FilePath $full_name -Wait -RedirectStandardOutput $(Join-Path $folder 'install_log.txt') -RedirectStandardError $(Join-Path $folder 'install_err.txt') -WorkingDirectory $working_folder
     }
 
     $batch.ExitCode
@@ -357,10 +357,13 @@ function main {
                     $output = Call-Executable $rootFolder "setup.ps1" "-quiet"
                     Write-Host "Generated local mof file: $output"
 
-                    $output = Call-Executable $rootFolder "generate.exe" "--boshUrl https://$($boshUser):$($boshPassword)@$($boshIp):$($boshPort) -outputDir ."
+                    $working_folder = (Get-ChildItem $rootFolder -Recurse -Filter "*.msi" | Select -First 1).DirectoryName
+                    Write-Host "Batch script working folder: $working_folder"
+
+                    $output = Call-Executable $rootFolder "generate.exe" "--boshUrl https://$($boshUser):$($boshPassword)@$($boshIp):$($boshPort) -outputDir $working_folder"
                     Write-Host "Generate output: $output"
 
-                    $output =  Call-Batch $rootFolder "install.bat"
+                    $output =  Call-Batch $rootFolder "install.bat" $working_folder
                     if($output -ne $null) {
                         Write-Host "   Exit Code: $output" -ForegroundColor $error_color
                         $output = NET HELPMSG $output
