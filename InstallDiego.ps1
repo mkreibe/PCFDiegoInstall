@@ -34,6 +34,8 @@ Set-Variable info_color -option Constant -value 'DarkGray'
 Set-Variable error_color -option Constant -value 'Red'
 Set-Variable action_color -option Constant -value 'DarkYellow'
 
+$program_names = ("DiegoWindows", "GardenWindows")
+
 # Write the banner.
 function Write-Banner {
     . {
@@ -158,7 +160,7 @@ function Get-DiegoVersion([bool] $print = $true) {
     . {
 
         if($diego -eq $null -or $diego -eq "") {
-            if($properties -ne $null) {
+            if($properties -ne "") {
                 $props = ConvertFrom-StringData (Get-Content $properties -Raw)
                 if($props -ne $null) {
                     $diego = $props.'diego'
@@ -193,7 +195,7 @@ function Get-BoshPort {
                     $port = $value
                 }
             } else {
-                if($properties -ne $null) {
+                if($properties -ne "") {
                     $props = ConvertFrom-StringData (Get-Content $properties -Raw)
                     if($props -ne $null) {
                         $port = $props.'port'
@@ -233,7 +235,7 @@ function Get-BoshUser {
                     $user = $value
                 }
             } else {
-                if($properties -ne $null) {
+                if($properties -ne "") {
                     $props = ConvertFrom-StringData (Get-Content $properties -Raw)
                     if($props -ne $null) {
                         $user = $props.'user'
@@ -254,7 +256,7 @@ function Get-BoshUser {
 function Get-BoshPassword {
     . {
         if($password -eq "") {
-            if($properties -ne $null) {
+            if($properties -ne "") {
                 $props = ConvertFrom-StringData (Get-Content $properties -Raw)
                 if($props -ne $null) {
                     $password = $props.'password'
@@ -278,7 +280,7 @@ function Get-BoshIP {
             Write-Host "BOSH Manager IP Address: $ip" -ForegroundColor $info_color
         } else {
 
-            if($properties -ne $null) {
+            if($properties -ne "") {
                 $props = ConvertFrom-StringData (Get-Content $properties -Raw)
                 if($props -ne $null) {
                     $ip = $props.'ip'
@@ -406,11 +408,8 @@ function Call-Batch($folder, $filename, $working_folder) {
 }
 
 #cleanup the temp folders.
-function Cleanup($orig_folder, $folder, $was_unzipped) {
+function Cleanup($folder, $was_unzipped) {
     . {
-        Write-Host "Changing Folders back to the original [$($orig_folder)] ..." -ForegroundColor $info_color
-        Set-Location -Path $orig_folder
-
         if($was_unzipped -and $(Test-Path $folder)) {
             Write-Host "Cleaning up: $folder" -ForegroundColor $info_color
             Remove-Item -path $folder -Force -Recurse -Confirm:$false
@@ -420,13 +419,21 @@ function Cleanup($orig_folder, $folder, $was_unzipped) {
 
 function Uninstall {
     . {
-    Write-Host "TODO: Unistall"
+        Write-Host "Programs to uninstall: $($program_names.Length)" -ForegroundColor $info_color
+        foreach($progName in $program_names) {
+            $program = Get-WmiObject Win32_Product -Filter "Name = '$progName'"
+            Write-Host "Uninstalling [$($program.Name), Version=$($program.Version), Id=$($program.IdentifyingNumber)]" -ForegroundColor $info_color
+            $program.Uninstall()
+        }
+        Write-Host "Completed Uninstall" -ForegroundColor $info_color
     } | Out-Null
 }
 
 function Test-Install {
     . {
-    Write-Host "TODO: Test Install"
+        foreach($service in Get-WmiObject -Class Win32_Service -Filter "DisplayName LIKE 'CF %'") {
+            Write-Host "Service [Name: $($service.Name) '$($service.DisplayName)', Mode:$($service.StartMode)]: Status: $($service.Status) State: $($service.State)" -ForegroundColor $info_color
+        }
     } | Out-Null
 }
 
@@ -438,8 +445,6 @@ function Install {
         $boshPort = Get-BoshPort
 
         if($boshUser -ne "" -and $boshPassword -ne "" -and $boshIp -ne "" -and $boshPort -ne -1) {
-
-            $orig_folder = Get-Location
             ($rootFolder, $was_unzipped) = Get-ContentFolder
 
             Write-Host "Changing Folders: [Old: $($orig_folder)] [New: $($rootFolder)] ..." -ForegroundColor $info_color
@@ -452,7 +457,7 @@ function Install {
             Write-Host "Batch script working folder: $working_folder"
 
             $output = Call-Executable $rootFolder "generate.exe" "--boshUrl https://$($boshUser):$($boshPassword)@$($boshIp):$($boshPort) -outputDir $working_folder"
-            Write-Host "Generate output: $output"
+            Write-Host "Generate output: $output" -ForegroundColor $info_color
 
             $output =  Call-Batch $rootFolder "install.bat" $working_folder
             if($output -ne $null) {
@@ -466,10 +471,6 @@ function Install {
 
             if(-not $skiptest) {
                 Test-Install
-            }
-
-            if($cleanup) {
-                Cleanup $orig_folder $rootFolder $was_unzipped
             }
         }
     } | Out-Null
@@ -501,7 +502,14 @@ function main {
 
                 if($runtimeMode -eq "Reinstall" -or $runtimeMode -eq "Install") {
                     Write-Host "Performing install" -ForegroundColor $info_color
+                    $orig_folder = Get-Location
                     Install
+                    Write-Host "Changing Folders back to the original [$($orig_folder)] ..." -ForegroundColor $info_color
+                    Set-Location -Path $orig_folder
+
+                    if($cleanup) {
+                        Cleanup $rootFolder $was_unzipped
+                    }
                 }
             }
         }
