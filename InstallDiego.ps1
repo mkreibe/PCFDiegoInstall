@@ -2,16 +2,22 @@
 Param (
     [string] $diego,
 
+    [string] $properties,
+
     [string] $user,
     [string] $password,
     [string] $ip,
     [int]    $port,
     [string] $contents,
 
+    [string] $mode,
+
     [switch] $ignoreoscheck,
     [switch] $ignoreipcheck,
     [switch] $prompt,
-    [switch] $help
+    [switch] $cleanup,
+    [switch] $help,
+    [switch] $skiptest
 )
 
 <#
@@ -20,7 +26,7 @@ Param (
             strange behaviour if Powershell.
 #>
 
-Set-Variable version -option Constant -value '1.0.1'
+Set-Variable version -option Constant -value '1.0.0'
 Set-Variable pivotal_url -option Constant -value 'https://network.pivotal.io/products/elastic-runtime'
 
 Set-Variable input_color -option Constant -value 'Green'
@@ -49,15 +55,23 @@ function Write-Help {
         Write-Host ".\InstallDiego.ps1 "
         Write-Host "     [-diego <version>]      - Override the known Diego Version."
 
+        Write-Host "     [-properties <file>]    - Defines the properties file."
+
         Write-Host "     [-user <user>]          - Define the BOSH Director Administrator Name."
         Write-Host "     [-password <password>]  - Define the BOSH Director Administrator Password."
         Write-Host "     [-ip <ip>]              - Define the BOSH Director IP Address."
         Write-Host "     [-port <port>]          - BOSH Director Port."
         Write-Host "     [-contents <folder>]    - Location of the unzipped Diego files."
 
+        Write-Host "     [-mode <operation>]     - Change the mode of the script:"
+        Write-Host "                                Reinstall - Preform the uninstall, then install steps."
+        Write-Host "                                Install   - Install the diego programs."
+        Write-Host "                                Uninstall - Remove the diego programs."
+
         Write-Host "     [-ignoreoscheck]        - Ignore the OS Check."
         Write-Host "     [-ignoreipcheck]        - Ignore the BOSH IP Check."
         Write-Host "     [-prompt]               - Prompt on values that are not explicitly set in the arguments."
+        Write-Host "     [-cleanup]              - Cleanup the artifacts once the install is complete."
         Write-Host "     [-help]                 - Just print this help screen."
 
         Write-Host "`n"
@@ -72,6 +86,23 @@ function Display-Error([string][parameter(Mandatory=$true, position=0)] $title, 
         $shell.Popup($message, 5, $title, 0x30)
         Write-Host $message -ForegroundColor $error_color
     } | Out-Null
+}
+
+# Check the mode.
+function Get-Mode {
+    . {
+        if($mode -eq "") {
+            $mode = 'Install'
+        }
+
+        if($mode -eq "Install" -or $mode -eq "Reinstall" -or $mode -eq "Uninstall") {
+            Write-Host "Mode: $mode" -ForegroundColor $info_color
+        } else {
+            Display-Error "Invalid mode: $mode" "Only the following modes are allowed: Install, Uninstall, Reinstall"
+        }
+    } | Out-Null
+
+    $mode
 }
 
 # Check the PowerShell version.
@@ -125,8 +156,19 @@ function Check-OperatingSystem {
 # Get the diego version
 function Get-DiegoVersion([bool] $print = $true) {
     . {
+
         if($diego -eq $null -or $diego -eq "") {
-            $diego = '1.7.7'
+            if($properties -ne $null) {
+                $props = ConvertFrom-StringData (Get-Content $properties -Raw)
+                if($props -ne $null) {
+                    $diego = $props.'diego'
+                    Write-Host "Got Diego version from ($properties): $diego" -ForegroundColor $info_color
+                }
+            }
+
+            if($diego -eq $null -or $diego -eq "") {
+                $diego = '1.7.7'
+            }
         }
 
         if($print) {
@@ -151,7 +193,17 @@ function Get-BoshPort {
                     $port = $value
                 }
             } else {
-                $port = $default
+                if($properties -ne $null) {
+                    $props = ConvertFrom-StringData (Get-Content $properties -Raw)
+                    if($props -ne $null) {
+                        $port = $props.'port'
+                        Write-Host "Got BOSH Director Machine port ($properties): $port" -ForegroundColor $info_color
+                    }
+                }
+
+                if($port -eq 0) {
+                    $port = $default
+                }
             }
         } else {
             if($port -gt 0 -and $port -lt 65535) {
@@ -181,7 +233,17 @@ function Get-BoshUser {
                     $user = $value
                 }
             } else {
-                $user = $default
+                if($properties -ne $null) {
+                    $props = ConvertFrom-StringData (Get-Content $properties -Raw)
+                    if($props -ne $null) {
+                        $user = $props.'user'
+                        Write-Host "Got BOSH Administrator ($properties): $user" -ForegroundColor $info_color
+                    }
+                }
+
+                if($user -eq "") {
+                    $user = $default
+                }
             }
         }
     } | Out-Null
@@ -192,8 +254,18 @@ function Get-BoshUser {
 function Get-BoshPassword {
     . {
         if($password -eq "") {
-            Write-Host 'Enter the BOSH Administrator password: ' -NoNewline -ForegroundColor $input_color
-            $password = Read-Host
+            if($properties -ne $null) {
+                $props = ConvertFrom-StringData (Get-Content $properties -Raw)
+                if($props -ne $null) {
+                    $password = $props.'password'
+                    Write-Host "Got BOSH Administrator  password ($properties): $password" -ForegroundColor $info_color
+                }
+            }
+
+            if($password -eq "") {
+                Write-Host 'Enter the BOSH Administrator password: ' -NoNewline -ForegroundColor $input_color
+                $password = Read-Host
+            }
         }
     } | Out-Null
 
@@ -205,27 +277,38 @@ function Get-BoshIP {
         if($ip -ne "") {
             Write-Host "BOSH Manager IP Address: $ip" -ForegroundColor $info_color
         } else {
-            #Check IP address
-            Write-Host "Current machine IP Addresses:" -ForegroundColor $info_color
-            $default = ""
-            foreach($item in Get-NetIPAddress) {
-                if($default -eq "" -and $item.AddressFamily -eq "IPv4") {
-                    $default = "$($item.IPAddress.Substring(0, $item.IPAddress.LastIndexOf('.'))).50"
+
+            if($properties -ne $null) {
+                $props = ConvertFrom-StringData (Get-Content $properties -Raw)
+                if($props -ne $null) {
+                    $ip = $props.'ip'
+                    Write-Host "Got BOSH Manager IP Address ($properties): $ip" -ForegroundColor $info_color
                 }
-                Write-Host "`t$($item.IPAddress)" -ForegroundColor $info_color
             }
 
-            if($default -ne "") {
-                Write-Host "Enter the BOSH Director Machine IP address [$($default)]: " -NoNewline -ForegroundColor $input_color
-            } else {
-                Write-Host "Enter the BOSH Director Machine IP address: " -NoNewline -ForegroundColor $input_color
-            }
+            if($ip -eq "") {
+                #Check IP address
+                Write-Host "Current machine IP Addresses:" -ForegroundColor $info_color
+                $default = ""
+                foreach($item in Get-NetIPAddress) {
+                    if($default -eq "" -and $item.AddressFamily -eq "IPv4") {
+                        $default = "$($item.IPAddress.Substring(0, $item.IPAddress.LastIndexOf('.'))).50"
+                    }
+                    Write-Host "`t$($item.IPAddress)" -ForegroundColor $info_color
+                }
 
-            $value = Read-Host
-            if ($value -eq "") {
-                $ip = $default
-            } else {
-                $ip = $value
+                if($default -ne "") {
+                    Write-Host "Enter the BOSH Director Machine IP address [$($default)]: " -NoNewline -ForegroundColor $input_color
+                } else {
+                    Write-Host "Enter the BOSH Director Machine IP address: " -NoNewline -ForegroundColor $input_color
+                }
+
+                $value = Read-Host
+                if ($value -eq "") {
+                    $ip = $default
+                } else {
+                    $ip = $value
+                }
             }
         }
 
@@ -253,30 +336,40 @@ function Get-ContentFolder {
             Write-Host "Contents: $contents" -ForegroundColor $info_color
         } else {
 
-            # Get the zip and put it somewhere.
-            # TODO: in the future we may want to add a
-            #         Invoke-WebRequest $pivotal_url -OutFile $zip_staging
-            #       type of construct that would auto download the file.
-
-            Write-Host "`nDownload the zip from: $pivotal_url" -ForegroundColor $action_color
-            $zip_file = "C:\Users\$([Environment]::UserName)\Downloads\DiegoWindows$(Get-DiegoVersion($false)).zip"
-            Write-Host "Enter the location of the zip file [$($zip_file)]: " -NoNewline -ForegroundColor $input_color
-            $value = Read-Host
-            if ($value -ne "") { $zip_file = $value }
-
-            # Create a temp file
-            $contents = Join-Path $([System.IO.Path]::GetTempPath()) $([System.Guid]::NewGuid())
-            Write-Host "Creating temp folder: $contents" -ForegroundColor $info_color
-            New-Item $contents -type directory -Force | Out-Null
-
-            Write-Host "Unzipping $zip_file -> $contents" -ForegroundColor $info_color
-            $shell = New-Object -com Shell.Application
-            $zip = $shell.Namespace($zip_file)
-            foreach($item in $zip.items()) {
-                $shell.Namespace($contents).CopyHere($item)
+            if($properties -ne $null) {
+                $props = ConvertFrom-StringData (Get-Content $properties -Raw)
+                if($props -ne $null) {
+                    $contents = $props.'contents'
+                    Write-Host "Got Contents ($properties): $contents" -ForegroundColor $info_color
+                }
             }
+        
+            if($contents -eq "") {
+                # Get the zip and put it somewhere.
+                # TODO: in the future we may want to add a
+                #         Invoke-WebRequest $pivotal_url -OutFile $zip_staging
+                #       type of construct that would auto download the file.
 
-            $was_unzipped = $true
+                Write-Host "`nDownload the zip from: $pivotal_url" -ForegroundColor $action_color
+                $zip_file = "C:\Users\$([Environment]::UserName)\Downloads\DiegoWindows$(Get-DiegoVersion($false)).zip"
+                Write-Host "Enter the location of the zip file [$($zip_file)]: " -NoNewline -ForegroundColor $input_color
+                $value = Read-Host
+                if ($value -ne "") { $zip_file = $value }
+
+                # Create a temp file
+                $contents = Join-Path $([System.IO.Path]::GetTempPath()) $([System.Guid]::NewGuid())
+                Write-Host "Creating temp folder: $contents" -ForegroundColor $info_color
+                New-Item $contents -type directory -Force | Out-Null
+
+                Write-Host "Unzipping $zip_file -> $contents" -ForegroundColor $info_color
+                $shell = New-Object -com Shell.Application
+                $zip = $shell.Namespace($zip_file)
+                foreach($item in $zip.items()) {
+                    $shell.Namespace($contents).CopyHere($item)
+                }
+
+                $was_unzipped = $true
+            }
         }
     } | Out-Null
 
@@ -325,6 +418,63 @@ function Cleanup($orig_folder, $folder, $was_unzipped) {
     } | Out-Null
 }
 
+function Uninstall {
+    . {
+    Write-Host "TODO: Unistall"
+    } | Out-Null
+}
+
+function Test-Install {
+    . {
+    Write-Host "TODO: Test Install"
+    } | Out-Null
+}
+
+function Install {
+    . {
+        $boshUser = Get-BoshUser
+        $boshPassword = Get-BoshPassword
+        $boshIp = Get-BoshIP
+        $boshPort = Get-BoshPort
+
+        if($boshUser -ne "" -and $boshPassword -ne "" -and $boshIp -ne "" -and $boshPort -ne -1) {
+
+            $orig_folder = Get-Location
+            ($rootFolder, $was_unzipped) = Get-ContentFolder
+
+            Write-Host "Changing Folders: [Old: $($orig_folder)] [New: $($rootFolder)] ..." -ForegroundColor $info_color
+            Set-Location -Path $rootFolder
+
+            $output = Call-Executable $rootFolder "setup.ps1" "-quiet"
+            Write-Host "Generated local mof file: $output"
+
+            $working_folder = (Get-ChildItem $rootFolder -Recurse -Filter "*.msi" | Select -First 1).DirectoryName
+            Write-Host "Batch script working folder: $working_folder"
+
+            $output = Call-Executable $rootFolder "generate.exe" "--boshUrl https://$($boshUser):$($boshPassword)@$($boshIp):$($boshPort) -outputDir $working_folder"
+            Write-Host "Generate output: $output"
+
+            $output =  Call-Batch $rootFolder "install.bat" $working_folder
+            if($output -ne $null) {
+                Write-Host "   Exit Code: $output" -ForegroundColor $error_color
+                $output = NET HELPMSG $output
+                Write-Host "   Network Error: $output" -ForegroundColor $error_color
+                Write-Host "   Logs:`n$(TYPE install_err.txt)" -ForegroundColor $info_color
+            } else {
+                Write-Host "   Batch script completed successfully" -ForegroundColor $info_color
+            }
+
+            if(-not $skiptest) {
+                Test-Install
+            }
+
+            if($cleanup) {
+                Cleanup $orig_folder $rootFolder $was_unzipped
+            }
+        }
+    } | Out-Null
+}
+
 function main {
     . {
         # Startup with the banner.
@@ -335,47 +485,23 @@ function main {
             Write-Help
         } else {
 
-            if($(Check-PowershellVersion) -and
+            # Check the mode.
+            $runtimeMode = Get-Mode
+            if(($runtimeMode -ne $null) -and
+                $(Check-PowershellVersion) -and
                 $(Check-ExecutionPolicy) -and
                 $($ignoreoscheck -or $(Check-OperatingSystem))) {
 
                 Get-DiegoVersion
 
-                $boshUser = Get-BoshUser
-                $boshPassword = Get-BoshPassword
-                $boshIp = Get-BoshIP
-                $boshPort = Get-BoshPort
+                if($runtimeMode -eq "Reinstall" -or $runtimeMode -eq "Uninstall") {
+                    Write-Host "Performing Uninstall" -ForegroundColor $info_color
+                    Uninstall
+                }
 
-                if($boshUser -ne "" -and $boshPassword -ne "" -and $boshIp -ne "" -and $boshPort -ne -1) {
-
-                    $orig_folder = Get-Location
-                    ($rootFolder, $was_unzipped) = Get-ContentFolder
-
-                    Write-Host "Changing Folders: [Old: $($orig_folder)] [New: $($rootFolder)] ..." -ForegroundColor $info_color
-                    Set-Location -Path $rootFolder
-
-                    $output = Call-Executable $rootFolder "setup.ps1" "-quiet"
-                    Write-Host "Generated local mof file: $output"
-
-                    $working_folder = (Get-ChildItem $rootFolder -Recurse -Filter "*.msi" | Select -First 1).DirectoryName
-                    Write-Host "Batch script working folder: $working_folder"
-
-                    $output = Call-Executable $rootFolder "generate.exe" "--boshUrl https://$($boshUser):$($boshPassword)@$($boshIp):$($boshPort) -outputDir $working_folder"
-                    Write-Host "Generate output: $output"
-
-                    $output =  Call-Batch $rootFolder "install.bat" $working_folder
-                    if($output -ne $null) {
-                        Write-Host "   Exit Code: $output" -ForegroundColor $error_color
-                        $output = NET HELPMSG $output
-                        Write-Host "   Network Error: $output" -ForegroundColor $error_color
-                        Write-Host "   Logs:`n$(TYPE install_err.txt)" -ForegroundColor $info_color
-                    } else {
-                        Write-Host "   Batch script completed successfully" -ForegroundColor $info_color
-                    }
-
-                    #TODO: Test the install.
-
-                    Cleanup $orig_folder $rootFolder $was_unzipped
+                if($runtimeMode -eq "Reinstall" -or $runtimeMode -eq "Install") {
+                    Write-Host "Performing install" -ForegroundColor $info_color
+                    Install
                 }
             }
         }
