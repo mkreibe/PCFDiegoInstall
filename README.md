@@ -1,6 +1,6 @@
 # PCF Diego On Windows
 
-Setting up Diego on windows is a fairly simple task, and only takes a few simple steps. That said, many times a single (instead of the several) is more handy, repeatable and less error prone then the existing process. This script was developed to make the process even easier and faster. Furthermore, this script allows for quick and efficient deployment on a larger more complex environment then the one described in the original pivotal process.
+Setting up Diego on windows is a fairly simple task, and only takes a few steps. That said, many times a single (instead of the several) is more handy, repeatable and less error prone then the existing process. This script was developed to make the process even easier and faster. Furthermore, this script allows for quick and efficient deployment on a larger more complex environment then the one described in the original pivotal process.
 
 ## Common usages
 
@@ -39,14 +39,14 @@ ip=<BOSH Server>
 
 This installation allows the user to provide a file which holds the known field values. This usage is nice for installing multiple Diego servers.
 
-### Hacking the original Pivotal `setup.ps1` script
+### Using unzipped Diego Install.
 
 ###### Command Line
 ```DOS
 > .\InstallDiego.ps1 -contents <path to the diego files>
 ```
 
-Sometimes it is nessasary to modify the default `setup.ps1` script that Pivotal provides. This flag will allow the user to do those modifications without re-zippping the file contents.
+If the Diego install archive is already unzipped. This flag will allow the user to do use the contents without needing to rezip the files.
 
 ## Fields
 The following are the set of parameters and their details.
