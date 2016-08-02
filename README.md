@@ -2,6 +2,10 @@
 
 Setting up Diego on windows is a fairly simple task, and only takes a few steps. That said, many times a single (instead of the several) is more handy, repeatable and less error prone then the existing process. This script was developed to make the process even easier and faster. Furthermore, this script allows for quick and efficient deployment on a larger more complex environment then the one described in the original pivotal process.
 
+Pivotal documentation can be found [here](https://docs.pivotal.io/pivotalcf/1-7/opsguide/deploying-diego.html).
+
+The Diego install scripts can be found [here](https://network.pivotal.io/products/elastic-runtime). As of this writing, this script only supports versions 1.7.7 and above.
+
 ## Common usages
 
 The following are common usages for this script.
