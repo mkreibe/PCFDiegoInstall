@@ -51,7 +51,7 @@ Sometimes it is nessasary to modify the default `setup.ps1` script that Pivotal 
 ## Fields
 The following are the set of parameters and their details.
 
-##### diego [Optional]
+#### diego [Optional]
    * Type: `Version`
    * Default: `1.7.7`
    * Will prompt: *Never*
@@ -60,7 +60,7 @@ The following are the set of parameters and their details.
 
 Set the Diego version. This does nothing except help out with the zip file identification.
 
-##### properties [Optional]
+#### properties [Optional]
    * Type: `File Path`
    * Default: `""`
    * Will prompt: *Never*
@@ -77,7 +77,7 @@ The following are the avaiable properties defines:
 | **ip**       | *None*     |
 | **port**     | `25555`    |
 
-##### user
+#### user
    * Type: `String`
    * Default: `director`
    * Will prompt: *When* `prompt` *flag is set*
@@ -85,7 +85,7 @@ The following are the avaiable properties defines:
 
 Set the BOSH Administrator name.
 
-##### password
+#### password
    * Type: `String`
    * Default: *None*
    * Will prompt: *When no value is specified in the command line or properties file*
@@ -93,7 +93,7 @@ Set the BOSH Administrator name.
 
 Set the BOSH Administrator password.
 
-##### ip
+#### ip
    * Type: `IP Address` *or* `Machine Name`
    * Default: *None*
    * Will prompt: *When no value is specified in the command line or properties file*
@@ -103,14 +103,14 @@ Set the BOSH Manager server IP.
 
 **NOTE:** The machine name versions of this field was not tested, but should work.
 
-##### port
+#### port
    * Type: `Integer` *between 1 and 65535*
    * Default: `25555`
    * Will prompt: *When* `prompt` *flag is set*
    * Properties file label: `port`
 
 Set the BOSH Manager server port.
-##### contents
+#### contents
    * Type: `Folder Path`
    * Default: *None*
    * Will prompt: *Yes*
@@ -118,7 +118,7 @@ Set the BOSH Manager server port.
 
 Defines the location of the folder where the diego installation contents reside. Without this defines the script will ask for the location of a zip file where the files are located, it will then automatically extract the contents, locate and run the scripts contained.
  
-##### mode
+#### mode
    * Type: `Enumeration` *As described below*
    * Default: `Install`
    * Will prompt: `Never`
@@ -133,42 +133,42 @@ Set the installation mode. The following is the possible options for this proper
 
 **Note:** These values are case sensitive.
 
-##### ignoreoscheck
+#### ignoreoscheck
    * Type: `Flag`
    * Default: *Unset*
    * Will prompt: `Never`.
 
 If set, ignore any OS checks, this is for testing purposes only.
 
-##### ignoreipcheck
+#### ignoreipcheck
    * Type: `Flag`
    * Default: *Unset*
    * Will prompt: *If test fails*.
 
 If set, ignore the BOSH IP Address and do not test to see if the machine is reachable. If this is not set and the BOSH server is unreachable, then a prompt will ask if you would like to continue.
 
-##### prompt
+#### prompt
    * Type: `Flag`
    * Default: *Unset*
    * Will prompt: `Never`.
 
 Show all promptable items when they are requested by the script. This will allow the user to override the defaults when they are not specified on the command line or properties file.
 
-##### cleanup
+#### cleanup
    * Type: `Flag`
    * Default: *Unset*
    * Will prompt: `Never`.
 
 Cleanup any created files.
 
-##### help
+#### help
    * Type: `Flag`
    * Default: *Unset*
    * Will prompt: `Never`.
 
 Show the help screen and exit out.
 
-##### skiptest
+#### skiptest
    * Type: `Flag`
    * Default: *Unset*
    * Will prompt: `Never`.
