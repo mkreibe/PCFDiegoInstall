@@ -51,7 +51,7 @@ Sometimes it is nessasary to modify the default `setup.ps1` script that Pivotal 
 ## Fields
 The following are the set of parameters and their details.
 
-#### diego [Optional]
+#### diego
    * Type: `Version`
    * Default: `1.7.7`
    * Will prompt: *Never*
@@ -60,7 +60,7 @@ The following are the set of parameters and their details.
 
 Set the Diego version. This does nothing except help out with the zip file identification.
 
-#### properties [Optional]
+#### properties
    * Type: `File Path`
    * Default: `""`
    * Will prompt: *Never*
